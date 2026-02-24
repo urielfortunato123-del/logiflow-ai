@@ -6,27 +6,7 @@ const corsHeaders = {
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const GEMMA_MODEL = "google/gemma-3n-e4b-it:free";
-
-async function callOpenRouter(messages: any[], apiKey: string, stream = false) {
-  const resp = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: GEMMA_MODEL, messages, stream, temperature: 0.3 }),
-  });
-
-  if (!resp.ok) {
-    const t = await resp.text();
-    console.error("OpenRouter error:", resp.status, t);
-    if (resp.status === 429) throw { status: 429, message: "Rate limit excedido. Tente novamente." };
-    if (resp.status === 402) throw { status: 402, message: "Créditos insuficientes no OpenRouter." };
-    throw new Error(`OpenRouter erro ${resp.status}`);
-  }
-  return resp;
-}
+const MODEL = "google/gemma-3n-e4b-it:free";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -49,7 +29,8 @@ Você ajuda analistas de logística com:
 IMPORTANTE: Você tem acesso aos dados REAIS da operação de hoje. Use esses dados para dar respostas precisas.
 Quando citar dados, seja específico (ex: "A rota MAR-001 está com 5 de 12 paradas realizadas").
 Nunca invente dados — use apenas os dados fornecidos no contexto.
-Mantenha respostas concisas e acionáveis.`;
+Mantenha respostas concisas e acionáveis.
+Quando pedido para gerar tabelas, use tabelas markdown com | e ---.`;
 
     if (context) {
       systemPrompt += `\n\n=== DADOS REAIS DA OPERAÇÃO (${context.date || "hoje"}) ===\n`;
@@ -118,18 +99,33 @@ Mantenha respostas concisas e acionáveis.`;
       systemPrompt += `\n=== FIM DOS DADOS ===`;
     }
 
-    // Gemma 3n doesn't support system role - prepend system prompt to first user message
+    // Gemma 3n doesn't support system role - prepend to first user message
     const adjustedMessages = messages.map((m: any, i: number) => {
       if (i === 0 && m.role === "user") {
         return { role: "user", content: `[Instruções do assistente]\n${systemPrompt}\n\n[Pergunta do usuário]\n${m.content}` };
       }
       return m;
     });
-    // If first message isn't user, prepend as user message
     const finalMessages = adjustedMessages[0]?.role === "user" 
       ? adjustedMessages 
       : [{ role: "user", content: systemPrompt }, ...adjustedMessages];
-    const response = await callOpenRouter(finalMessages, OR_KEY, true);
+
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OR_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: MODEL, messages: finalMessages, stream: true, temperature: 0.3, max_tokens: 2048 }),
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      console.error("OpenRouter error:", response.status, t);
+      if (response.status === 429) throw { status: 429, message: "Rate limit excedido. Tente novamente." };
+      if (response.status === 402) throw { status: 402, message: "Créditos insuficientes." };
+      throw new Error(`AI erro ${response.status}`);
+    }
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
