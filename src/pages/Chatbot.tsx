@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Send, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { gatherOperationalContext } from "@/lib/operationalContext";
@@ -176,7 +178,33 @@ export default function Chatbot() {
                   : "bg-secondary text-secondary-foreground"
               }`}>
                 <div className="prose prose-sm prose-invert max-w-none [&>p]:m-0 [&>ul]:my-1 [&>ol]:my-1 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      code({ className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || "");
+                        const codeString = String(children).replace(/\n$/, "");
+                        if (match) {
+                          return (
+                            <SyntaxHighlighter
+                              style={oneDark}
+                              language={match[1]}
+                              PreTag="div"
+                              customStyle={{ margin: "0.5rem 0", borderRadius: "0.5rem", fontSize: "0.8rem" }}
+                            >
+                              {codeString}
+                            </SyntaxHighlighter>
+                          );
+                        }
+                        return (
+                          <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             </div>
