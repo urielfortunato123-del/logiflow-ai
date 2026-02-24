@@ -1,31 +1,161 @@
-import { useState } from "react";
-import { Send, Sparkles, X, Maximize2, Minimize2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Send, Sparkles, Loader2 } from "lucide-react";
 import { ChatMessage } from "@/types/domain";
+import { toast } from "sonner";
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+
+type Msg = { role: "user" | "assistant"; content: string };
+
+async function streamChat({
+  messages,
+  onDelta,
+  onDone,
+  onError,
+}: {
+  messages: Msg[];
+  onDelta: (text: string) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
+}) {
+  const resp = await fetch(CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: JSON.stringify({
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      context: {
+        date: new Date().toISOString().split("T")[0],
+        dashboard_snapshot: {
+          vehicles_in_queue: 2,
+          loading_now: 2,
+          divergences: 1,
+          routes_at_risk: 1,
+          pending_trainings: 2,
+        },
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    let errorMsg = "Erro na comunicação com IA";
+    try {
+      const errData = await resp.json();
+      errorMsg = errData.error || errorMsg;
+    } catch {}
+    onError(errorMsg);
+    return;
+  }
+
+  if (!resp.body) {
+    onError("Sem resposta do servidor");
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let textBuffer = "";
+  let streamDone = false;
+
+  while (!streamDone) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    textBuffer += decoder.decode(value, { stream: true });
+
+    let newlineIndex: number;
+    while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+      let line = textBuffer.slice(0, newlineIndex);
+      textBuffer = textBuffer.slice(newlineIndex + 1);
+
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (line.startsWith(":") || line.trim() === "") continue;
+      if (!line.startsWith("data: ")) continue;
+
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === "[DONE]") {
+        streamDone = true;
+        break;
+      }
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch {
+        textBuffer = line + "\n" + textBuffer;
+        break;
+      }
+    }
+  }
+
+  // Final flush
+  if (textBuffer.trim()) {
+    for (let raw of textBuffer.split("\n")) {
+      if (!raw) continue;
+      if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+      if (raw.startsWith(":") || raw.trim() === "") continue;
+      if (!raw.startsWith("data: ")) continue;
+      const jsonStr = raw.slice(6).trim();
+      if (jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch {}
+    }
+  }
+
+  onDone();
+}
 
 export default function Chatbot() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: "1", role: "assistant", content: "Olá! Sou o assistente LogiOps AI. Posso ajudar com análise de rotas, conferências, preparação de reuniões e muito mais. Como posso ajudar?", timestamp: new Date().toISOString() },
+  const [messages, setMessages] = useState<Msg[]>([
+    { role: "assistant", content: "Olá! Sou o assistente LogiOps AI, alimentado por Gemini. Posso ajudar com análise de rotas, conferências, preparação de reuniões e muito mais. Como posso ajudar?" },
   ]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const send = () => {
-    if (!input.trim()) return;
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: input, timestamp: new Date().toISOString() };
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || isLoading) return;
+    const userMsg: Msg = { role: "user", content: input };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
-    setLoading(true);
+    setIsLoading(true);
 
-    setTimeout(() => {
-      const response: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: generateMockResponse(input),
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, response]);
-      setLoading(false);
-    }, 1200);
+    let assistantSoFar = "";
+    const upsertAssistant = (chunk: string) => {
+      assistantSoFar += chunk;
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && prev.length > 1 && prev[prev.length - 2]?.role === "user") {
+          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+        }
+        return [...prev, { role: "assistant", content: assistantSoFar }];
+      });
+    };
+
+    try {
+      await streamChat({
+        messages: [...messages, userMsg],
+        onDelta: (chunk) => upsertAssistant(chunk),
+        onDone: () => setIsLoading(false),
+        onError: (error) => {
+          toast.error(error);
+          setIsLoading(false);
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao conectar com a IA");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -38,27 +168,24 @@ export default function Chatbot() {
           </div>
           <div>
             <p className="text-sm font-semibold text-foreground">LogiOps AI Assistant</p>
-            <p className="text-xs text-muted-foreground">Contexto: Operações de hoje • Marília-SP</p>
+            <p className="text-xs text-muted-foreground">Gemini • Operações de hoje • Marília-SP</p>
           </div>
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map(msg => (
-            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-3 text-sm ${
                 msg.role === "user"
                   ? "gradient-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
               }`}>
                 <p className="whitespace-pre-wrap">{msg.content}</p>
-                <p className={`text-xs mt-1.5 ${msg.role === "user" ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                  {new Date(msg.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                </p>
               </div>
             </div>
           ))}
-          {loading && (
+          {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
             <div className="flex justify-start">
               <div className="bg-secondary rounded-lg px-4 py-3">
                 <div className="flex gap-1">
@@ -69,6 +196,7 @@ export default function Chatbot() {
               </div>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
@@ -81,31 +209,18 @@ export default function Chatbot() {
               onKeyDown={e => e.key === "Enter" && send()}
               placeholder="Pergunte sobre operações, rotas, divergências..."
               className="flex-1 px-4 py-2.5 rounded-lg ops-input text-sm border"
+              disabled={isLoading}
             />
             <button
               onClick={send}
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || isLoading}
               className="p-2.5 rounded-lg gradient-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              <Send className="h-4 w-4" />
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-function generateMockResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("rota") || lower.includes("route")) {
-    return "📊 Baseado nos dados de hoje:\n\n• MAR-001: Em andamento, 38/45 paradas (84%), tempo dentro do esperado\n• BAU-015: Planejada, aguardando saída (caminhão atrasou 1.5h — incidente registrado)\n• MAR-003: Concluída com sucesso, 25/25 paradas\n• ASS-007: Em andamento, 22/30 paradas — motorista reportou trânsito intenso\n• OUR-012: Concluída, 50/50 paradas\n\nSugestão: Acompanhar ASS-007 e verificar plano alternativo para BAU-015.";
-  }
-  if (lower.includes("divergência") || lower.includes("conferência")) {
-    return "⚠️ Divergência detectada na conferência #c2 (Bauru Hub):\n\n• Sistema A: 245 pedidos\n• Sistema B: 241 pedidos\n• Diferença: 4 pedidos\n\nPossíveis causas:\n1. Sincronização tardia entre sistemas\n2. Cancelamentos não refletidos\n3. Erro de digitação\n\nRecomendação: Verificar os 4 pedidos faltantes no Sistema B e confirmar status no WMS.";
-  }
-  if (lower.includes("reunião") || lower.includes("meeting") || lower.includes("agenda")) {
-    return "📋 Agenda sugerida para reunião de rotas:\n\n1. **Status do dia** — 5 rotas, 3 concluídas, 2 em andamento\n2. **Incidentes** — Simulado incêndio (40min) + atraso TransLog (90min)\n3. **Divergência Bauru** — 4 pedidos faltantes, pendente resolução\n4. **Treinamentos** — 2 motoristas com treinamento pendente (TransLog)\n5. **Plano amanhã** — Redistribuir volume de BAU-015 se atraso persistir\n\nDeseja que eu gere um e-mail com estes pontos?";
-  }
-  return "Entendido! Analisei os dados de operações de hoje. Há 2 rotas em andamento, 1 divergência pendente na conferência, e 2 incidentes registrados. Posso detalhar qualquer um desses pontos. O que gostaria de saber?";
 }
