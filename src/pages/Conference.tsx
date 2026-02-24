@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { StatusChip } from "@/components/StatusChip";
 import { CrudModal, Field, inputClass, selectClass } from "@/components/CrudModal";
 import { mockConferences, mockAgencies, mockRoutes, getAgencyName } from "@/data/mockData";
 import { Conference as ConferenceType } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
-import { FileCheck, AlertTriangle, Upload, Plus, Pencil } from "lucide-react";
+import { FileCheck, AlertTriangle, Upload, Plus, Pencil, Sparkles, FileText } from "lucide-react";
 import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
@@ -17,6 +18,7 @@ const emptyConf = (): ConferenceType => ({
 });
 
 export default function Conference() {
+  const navigate = useNavigate();
   const [confs, setConfs] = useState<ConferenceType[]>(() => getStore(K, mockConferences));
   const [modal, setModal] = useState<{ open: boolean; conf: ConferenceType; isNew: boolean }>({ open: false, conf: emptyConf(), isNew: true });
 
@@ -62,8 +64,12 @@ export default function Conference() {
                   <FileCheck className={`h-5 w-5 ${conf.is_divergent ? "text-critical" : "text-success"}`} />
                   <span className="font-semibold text-foreground">{getAgencyName(conf.agency_id)}</span>
                   <StatusChip status={conf.is_divergent ? "divergent" : "ok"} />
-                  <button onClick={e => { e.stopPropagation(); openEdit(conf); }} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-                </div>
+                   <button onClick={e => { e.stopPropagation(); openEdit(conf); }} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                 </div>
+                 <div className="flex gap-2 mt-2">
+                   <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Analise a conferência da agência ${getAgencyName(conf.agency_id)}: Sacas ${conf.qty_sacks}, Cotas ${conf.qty_cotas}, Sistema A ${conf.orders_sys_a}, Sistema B ${conf.orders_sys_b}, Divergente: ${conf.is_divergent ? "SIM" : "NÃO"}. ${conf.divergence_reason ? `Motivo: ${conf.divergence_reason}` : ""} Identifique problemas e sugira ações corretivas.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><Sparkles className="h-3 w-3 text-primary" /> Analisar com IA</button>
+                   <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Prepare um resumo para reunião sobre a conferência da agência ${getAgencyName(conf.agency_id)}. Dados: Sacas ${conf.qty_sacks}, Cotas ${conf.qty_cotas}, Sistema A ${conf.orders_sys_a}, Sistema B ${conf.orders_sys_b}. ${conf.is_divergent ? `DIVERGÊNCIA: ${conf.divergence_reason || `Diferença de ${Math.abs(conf.orders_sys_a - conf.orders_sys_b)} pedidos`}` : "Sem divergências."} Liste pontos de atenção e próximos passos.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><FileText className="h-3 w-3" /> Prep. Reunião</button>
+                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                   <div><span className="text-xs text-muted-foreground block">Sacas</span><span className="font-bold text-foreground">{conf.qty_sacks}</span></div>
                   <div><span className="text-xs text-muted-foreground block">Cotas</span><span className="font-bold text-foreground">{conf.qty_cotas}</span></div>
