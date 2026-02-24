@@ -17,6 +17,7 @@ import Coverage from "@/pages/Coverage";
 import OCRCenter from "@/pages/OCRCenter";
 import Chatbot from "@/pages/Chatbot";
 import SettingsPage from "@/pages/Settings";
+import TextAnalysis from "@/pages/TextAnalysis";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
           <Route path="/coverage" element={<LayoutRoute><Coverage /></LayoutRoute>} />
           <Route path="/ocr" element={<LayoutRoute><OCRCenter /></LayoutRoute>} />
           <Route path="/chatbot" element={<LayoutRoute><Chatbot /></LayoutRoute>} />
+          <Route path="/text-analysis" element={<LayoutRoute><TextAnalysis /></LayoutRoute>} />
           <Route path="/settings" element={<LayoutRoute><SettingsPage /></LayoutRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
