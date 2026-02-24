@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { StatusChip } from "@/components/StatusChip";
 import { CrudModal, Field, inputClass, selectClass } from "@/components/CrudModal";
 import { mockIncidents } from "@/data/mockData";
 import { Incident, IncidentType } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
-import { AlertTriangle, Plus, Clock, Zap, Pencil } from "lucide-react";
+import { AlertTriangle, Plus, Clock, Zap, Pencil, Sparkles, FileText } from "lucide-react";
 import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
@@ -17,6 +18,7 @@ const emptyIncident = (): Incident => ({
 });
 
 export default function Incidents() {
+  const navigate = useNavigate();
   const [incidents, setIncidents] = useState<Incident[]>(() => getStore(K, mockIncidents));
   const [modal, setModal] = useState<{ open: boolean; inc: Incident; isNew: boolean }>({ open: false, inc: emptyIncident(), isNew: true });
 
@@ -53,10 +55,14 @@ export default function Incidents() {
                   <div className="flex items-center gap-3">
                     <span className="font-semibold text-foreground">{typeLabels[inc.incident_type]}</span>
                     <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">{inc.duration_min} min</span>
-                    <button onClick={e => { e.stopPropagation(); openEdit(inc); }} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{inc.impact}</p>
-                  {inc.notes && <p className="text-xs text-muted-foreground italic">{inc.notes}</p>}
+                     <button onClick={e => { e.stopPropagation(); openEdit(inc); }} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                   </div>
+                   <p className="text-sm text-muted-foreground">{inc.impact}</p>
+                   {inc.notes && <p className="text-xs text-muted-foreground italic">{inc.notes}</p>}
+                   <div className="flex gap-2 mt-2">
+                     <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Analise o incidente "${typeLabels[inc.incident_type]}" de ${inc.duration_min} minutos. Impacto: ${inc.impact}. ${inc.notes ? `Notas: ${inc.notes}` : ""} Identifique causas raiz, impacto operacional e sugira ações preventivas.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><Sparkles className="h-3 w-3 text-primary" /> Analisar com IA</button>
+                     <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Prepare um resumo para reunião sobre o incidente "${typeLabels[inc.incident_type]}". Duração: ${inc.duration_min} min. Impacto: ${inc.impact}. ${inc.notes ? `Notas: ${inc.notes}` : ""} Liste causas, impacto e plano de ação.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><FileText className="h-3 w-3" /> Prep. Reunião</button>
+                   </div>
                 </div>
               </div>
             </div>
