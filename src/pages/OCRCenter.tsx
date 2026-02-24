@@ -1,4 +1,4 @@
-import { Upload, FileText, Image, Eye, Trash2, Send } from "lucide-react";
+import { Upload, FileText, Image, Eye, Trash2, Send, Sparkles, Loader2 } from "lucide-react";
 import { useState, useRef } from "react";
 import { genId, getStore, setStore, STORE_KEYS } from "@/lib/localStorage";
 import { toast } from "sonner";
@@ -94,6 +94,7 @@ export default function OCRCenter() {
             <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground hover:text-foreground">Fechar</button>
           </div>
           <pre className="text-sm text-foreground whitespace-pre-wrap font-mono bg-muted/50 p-4 rounded-lg max-h-60 overflow-y-auto">{preview.extracted_text}</pre>
+          <OcrAiAnalysis text={preview.extracted_text} filename={preview.filename} />
         </div>
       )}
 
@@ -123,6 +124,65 @@ export default function OCRCenter() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const AI_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assist`;
+
+function OcrAiAnalysis({ text, filename }: { text: string; filename: string }) {
+  const [loading, setLoading] = useState(false);
+  const [analysis, setAnalysis] = useState<string | null>(null);
+
+  const analyze = async () => {
+    setLoading(true);
+    setAnalysis(null);
+    try {
+      const resp = await fetch(AI_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          module: "OCR Center",
+          fields: { filename, extracted_text: text.slice(0, 2000) },
+          field_target: "análise e interpretação do texto extraído",
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Erro ao analisar");
+      }
+      const data = await resp.json();
+      setAnalysis(data.suggestion || "Sem análise disponível.");
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao conectar com a IA");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      {analysis ? (
+        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 animate-fade-in-up">
+          <div className="flex items-center gap-2 text-xs font-medium text-primary mb-2">
+            <Sparkles className="h-3 w-3" /> Análise da IA
+          </div>
+          <p className="text-sm text-foreground whitespace-pre-wrap">{analysis}</p>
+          <button onClick={() => setAnalysis(null)} className="mt-2 text-xs text-muted-foreground hover:text-foreground">Fechar</button>
+        </div>
+      ) : (
+        <button
+          onClick={analyze}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+          {loading ? "Analisando..." : "Interpretar com IA"}
+        </button>
+      )}
     </div>
   );
 }
