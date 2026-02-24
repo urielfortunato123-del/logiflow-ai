@@ -10,6 +10,7 @@ interface Attachment {
   size_bytes: number;
   extracted_text: string;
   created_at: string;
+  page_count?: number;
 }
 
 const K = STORE_KEYS.ATTACHMENTS;
@@ -21,22 +22,32 @@ export default function OCRCenter() {
   const [attachments, setAttachments] = useState<Attachment[]>(() => getStore(K, []));
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [progressMsg, setProgressMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const save = (items: Attachment[]) => { setStore(K, items); setAttachments(items); };
 
   const processFile = async (file: File) => {
     setProcessing(true);
+    setProgressMsg(`Processando ${file.name}...`);
     try {
       let extractedText = "";
+      let pageCount: number | undefined;
 
       if (file.type.includes("text") || file.name.endsWith(".csv")) {
         extractedText = await file.text();
+      } else if (file.type === "application/pdf") {
+        setProgressMsg("Convertendo PDF em imagens...");
+        const result = await processPdf(file, (page, total) => {
+          setProgressMsg(`OCR página ${page}/${total}...`);
+        });
+        extractedText = result.text;
+        pageCount = result.pages;
       } else if (file.type.startsWith("image/")) {
-        // Send image to Hugging Face OCR via edge function
+        setProgressMsg("Extraindo texto da imagem...");
         extractedText = await ocrImage(file);
       } else {
-        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado para OCR. Envie uma imagem (JPG, PNG) para extração de texto.`;
+        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado. Envie imagens (JPG, PNG) ou PDFs.`;
       }
 
       const attachment: Attachment = {
@@ -46,14 +57,16 @@ export default function OCRCenter() {
         size_bytes: file.size,
         extracted_text: extractedText,
         created_at: new Date().toISOString(),
+        page_count: pageCount,
       };
 
       save([attachment, ...attachments]);
-      toast.success(`${file.name} processado`);
+      toast.success(`${file.name} processado${pageCount ? ` (${pageCount} páginas)` : ""}`);
     } catch {
       toast.error("Erro ao processar arquivo");
     }
     setProcessing(false);
+    setProgressMsg("");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -86,18 +99,33 @@ export default function OCRCenter() {
         className={`glass-card rounded-lg p-12 text-center border-2 border-dashed transition-colors cursor-pointer ${dragActive ? "border-primary bg-primary/5" : "border-border"}`}
       >
         <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-        <p className="text-sm font-medium text-foreground mb-1">{processing ? "Processando OCR..." : "Arraste imagens ou PDFs aqui"}</p>
+        <p className="text-sm font-medium text-foreground mb-1">
+          {processing ? progressMsg || "Processando..." : "Arraste imagens ou PDFs aqui"}
+        </p>
         <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, CSV, TXT</p>
         <p className="text-xs text-muted-foreground mb-4 flex items-center justify-center gap-1">
-          <ScanLine className="h-3 w-3" /> Imagens são processadas com OCR via Hugging Face
+          <ScanLine className="h-3 w-3" /> OCR automático para imagens e PDFs (Hugging Face + Gemini Vision)
         </p>
-        <button className="px-6 py-2.5 rounded-lg gradient-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity">Selecionar Arquivos</button>
+        {processing && (
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-xs text-primary font-medium">{progressMsg}</span>
+          </div>
+        )}
+        <button className="px-6 py-2.5 rounded-lg gradient-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity">
+          Selecionar Arquivos
+        </button>
       </div>
 
       {preview && (
         <div className="glass-card rounded-lg p-5 animate-fade-in-up">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-sm text-foreground">{preview.filename}</h3>
+            <div>
+              <h3 className="font-semibold text-sm text-foreground">{preview.filename}</h3>
+              {preview.page_count && (
+                <span className="text-xs text-muted-foreground">{preview.page_count} páginas extraídas</span>
+              )}
+            </div>
             <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground hover:text-foreground">Fechar</button>
           </div>
           <pre className="text-sm text-foreground whitespace-pre-wrap font-mono bg-muted/50 p-4 rounded-lg max-h-60 overflow-y-auto">{preview.extracted_text}</pre>
@@ -119,7 +147,11 @@ export default function OCRCenter() {
                   {file.mime.includes("pdf") ? <FileText className="h-5 w-5 text-critical" /> : file.mime.includes("image") ? <Image className="h-5 w-5 text-info" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
                   <div>
                     <p className="text-sm font-medium text-foreground">{file.filename}</p>
-                    <p className="text-xs text-muted-foreground">{(file.size_bytes / 1024).toFixed(1)} KB • {new Date(file.created_at).toLocaleString("pt-BR")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(file.size_bytes / 1024).toFixed(1)} KB
+                      {file.page_count ? ` • ${file.page_count} pág.` : ""}
+                      {" • "}{new Date(file.created_at).toLocaleString("pt-BR")}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -135,7 +167,71 @@ export default function OCRCenter() {
   );
 }
 
-/** Send image to HF OCR edge function */
+/* ── PDF to images using pdf.js ── */
+async function processPdf(file: File, onProgress: (page: number, total: number) => void): Promise<{ text: string; pages: number }> {
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const totalPages = Math.min(pdf.numPages, 10); // Limit to 10 pages
+
+  const pageTexts: string[] = [];
+
+  for (let i = 1; i <= totalPages; i++) {
+    onProgress(i, totalPages);
+    const page = await pdf.getPage(i);
+
+    // Render page to canvas
+    const scale = 2; // Higher quality
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d")!;
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    // Convert to base64
+    const base64 = canvas.toDataURL("image/png");
+
+    // Send to OCR
+    try {
+      const resp = await fetch(OCR_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          image_base64: base64,
+          filename: `${file.name} - página ${i}`,
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        pageTexts.push(`── Página ${i} ──\n${data.extracted_text || "[sem texto]"}`);
+      } else {
+        const err = await resp.json().catch(() => ({}));
+        pageTexts.push(`── Página ${i} ──\n[Erro: ${err.error || "falha na extração"}]`);
+      }
+    } catch {
+      pageTexts.push(`── Página ${i} ──\n[Erro de conexão]`);
+    }
+
+    // Cleanup
+    canvas.remove();
+  }
+
+  if (pdf.numPages > 10) {
+    pageTexts.push(`\n⚠️ PDF tem ${pdf.numPages} páginas. Apenas as 10 primeiras foram processadas.`);
+  }
+
+  return { text: pageTexts.join("\n\n"), pages: totalPages };
+}
+
+/* ── Send single image to OCR edge function ── */
 async function ocrImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -152,7 +248,7 @@ async function ocrImage(file: File): Promise<string> {
         });
 
         if (resp.status === 503) {
-          resolve(`[OCR] Modelo carregando na Hugging Face. Tente novamente em ~30 segundos.`);
+          resolve(`[OCR] Modelo carregando. Tente novamente em ~30 segundos.`);
           return;
         }
 
@@ -172,6 +268,7 @@ async function ocrImage(file: File): Promise<string> {
   });
 }
 
+/* ── AI Analysis sub-component ── */
 function OcrAiAnalysis({ text, filename }: { text: string; filename: string }) {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
