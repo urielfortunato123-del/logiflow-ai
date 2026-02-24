@@ -5,12 +5,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const HF_BASE = "https://router.huggingface.co/hf-inference/models";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GEMMA_MODEL = "google/gemma-3n-e4b-it:free";
 
-const MODELS = {
-  ocr: "microsoft/trocr-large-printed",
-  vision: "Salesforce/blip-image-captioning-large",
-};
+const HF_BASE = "https://router.huggingface.co/hf-inference/models";
 
 async function callHF(model: string, imageBytes: Uint8Array, apiKey: string): Promise<{ data?: string; error?: string; loading?: boolean }> {
   const resp = await fetch(`${HF_BASE}/${model}`, {
@@ -36,25 +34,21 @@ async function callHF(model: string, imageBytes: Uint8Array, apiKey: string): Pr
   return { data: result.generated_text || result.caption || JSON.stringify(result) };
 }
 
-/** Fallback: use Lovable AI Gemini vision to extract text from image */
-async function fallbackVisionAI(imageBase64: string, filename: string): Promise<string | null> {
-  const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_KEY) return null;
-
-  // Ensure proper data URI format
+/** Use OpenRouter Gemma 3n for vision-based OCR */
+async function ocrWithOpenRouter(imageBase64: string, filename: string, apiKey: string): Promise<string | null> {
   let dataUri = imageBase64;
   if (!dataUri.startsWith("data:")) {
     dataUri = `data:image/png;base64,${dataUri}`;
   }
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${LOVABLE_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: GEMMA_MODEL,
       messages: [
         {
           role: "user",
@@ -67,10 +61,7 @@ Se houver tabelas, reproduza-as com alinhamento.
 Se não houver texto, descreva o conteúdo visual da imagem.
 Responda APENAS com o conteúdo extraído, sem explicações.`,
             },
-            {
-              type: "image_url",
-              image_url: { url: dataUri },
-            },
+            { type: "image_url", image_url: { url: dataUri } },
           ],
         },
       ],
@@ -79,7 +70,7 @@ Responda APENAS com o conteúdo extraído, sem explicações.`,
   });
 
   if (!resp.ok) {
-    console.error("Lovable AI vision fallback error:", resp.status, await resp.text().catch(() => ""));
+    console.error("OpenRouter OCR error:", resp.status, await resp.text().catch(() => ""));
     return null;
   }
 
@@ -94,9 +85,10 @@ serve(async (req) => {
     const { image_base64, filename, mode } = await req.json();
     if (!image_base64) throw new Error("image_base64 é obrigatório");
 
+    const OR_KEY = Deno.env.get("OPENROUTER_API_KEY");
     const HF_KEY = Deno.env.get("HUGGING_FACE_API_KEY");
 
-    // Decode image for HF calls
+    // Decode for HF
     const raw = image_base64.replace(/^data:[^;]+;base64,/, "");
     const binary = atob(raw);
     const imageBytes = new Uint8Array(binary.length);
@@ -107,16 +99,15 @@ serve(async (req) => {
     const errors: string[] = [];
     let hfFailed = false;
 
-    // Try HF first
+    // Try HF first for dedicated OCR/vision models
     if (HF_KEY) {
       const tasks: Promise<void>[] = [];
 
       if (selectedMode === "ocr" || selectedMode === "both") {
         tasks.push(
-          callHF(MODELS.ocr, imageBytes, HF_KEY).then(r => {
+          callHF("microsoft/trocr-large-printed", imageBytes, HF_KEY).then(r => {
             if (r.data) results.ocr = r.data;
             else if (r.error === "hf_payment_required") hfFailed = true;
-            else if (r.loading) errors.push(`OCR: ${r.error}`);
             else errors.push(`OCR: ${r.error}`);
           })
         );
@@ -124,10 +115,9 @@ serve(async (req) => {
 
       if (selectedMode === "vision" || selectedMode === "both") {
         tasks.push(
-          callHF(MODELS.vision, imageBytes, HF_KEY).then(r => {
+          callHF("Salesforce/blip-image-captioning-large", imageBytes, HF_KEY).then(r => {
             if (r.data) results.vision = r.data;
             else if (r.error === "hf_payment_required") hfFailed = true;
-            else if (r.loading) errors.push(`Visão: ${r.error}`);
             else errors.push(`Visão: ${r.error}`);
           })
         );
@@ -138,33 +128,29 @@ serve(async (req) => {
       hfFailed = true;
     }
 
-    // Fallback to Lovable AI vision if HF unavailable
-    if (hfFailed && !results.ocr && !results.vision) {
-      console.log("HF unavailable, using Lovable AI vision fallback");
-      const aiText = await fallbackVisionAI(image_base64, filename || "image");
-      if (aiText) {
-        results.ai_vision = aiText;
-      } else {
-        errors.push("Nenhum serviço de IA disponível");
-      }
+    // Fallback to OpenRouter Gemma 3n vision
+    if (hfFailed && !results.ocr && !results.vision && OR_KEY) {
+      console.log("HF unavailable, using OpenRouter Gemma 3n vision");
+      const aiText = await ocrWithOpenRouter(image_base64, filename || "image", OR_KEY);
+      if (aiText) results.ai_vision = aiText;
+      else errors.push("Falha no OpenRouter OCR");
     }
 
     // Build output
     const parts: string[] = [];
     if (results.ocr) parts.push(`📝 Texto extraído (OCR):\n${results.ocr}`);
     if (results.vision) parts.push(`👁️ Descrição da imagem:\n${results.vision}`);
-    if (results.ai_vision) parts.push(`🤖 Extração via IA (Gemini Vision):\n${results.ai_vision}`);
+    if (results.ai_vision) parts.push(`🤖 Extração via Gemma 3n (Vision):\n${results.ai_vision}`);
 
     if (!parts.length) {
-      const allLoading = errors.some(e => e.includes("carregando"));
       return new Response(
-        JSON.stringify({ error: errors.join(" | ") || "Falha na extração", loading: allLoading }),
-        { status: allLoading ? 503 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: errors.join(" | ") || "Falha na extração", loading: errors.some(e => e.includes("carregando")) }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const extracted_text = parts.join("\n\n") + (errors.length ? `\n\n⚠️ ${errors.join(" | ")}` : "");
-    const source = results.ai_vision ? "lovable-ai" : "huggingface";
+    const source = results.ai_vision ? "openrouter" : "huggingface";
 
     return new Response(
       JSON.stringify({ extracted_text, filename: filename || "image", models: Object.keys(results), source }),
