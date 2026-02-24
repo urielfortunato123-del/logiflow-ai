@@ -4,6 +4,7 @@ import { mockClosingReport, mockIncidents } from "@/data/mockData";
 import { ClosingReport, Incident } from "@/types/domain";
 import { getStore, setStore, genId, STORE_KEYS } from "@/lib/localStorage";
 import { Package, FileText, Sparkles, Download, AlertTriangle, Plus, Pencil, Trash2 } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.CLOSING_REPORTS;
@@ -135,6 +136,15 @@ export default function Closing() {
           <Field label="Pacotes Saídos"><input type="number" className={inputClass} value={modal.report.packages_out} onChange={e => setField("packages_out", Number(e.target.value))} /></Field>
           <Field label="Pacotes em Base"><input type="number" className={inputClass} value={modal.report.packages_in_base} onChange={e => setField("packages_in_base", Number(e.target.value))} /></Field>
         </div>
+        <Field label="Resumo">
+          <textarea className={inputClass} rows={3} value={modal.report.summary_text || ""} onChange={e => setField("summary_text", e.target.value)} placeholder="Resumo do fechamento..." />
+          <AiNoteHelper
+            module="Fechamento Diário"
+            fields={{ date: modal.report.date, packages_out: modal.report.packages_out, packages_in_base: modal.report.packages_in_base }}
+            fieldTarget="resumo do fechamento"
+            onAccept={(text) => setField("summary_text", text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );

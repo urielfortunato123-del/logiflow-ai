@@ -5,6 +5,7 @@ import { mockRoutes, mockAgencies, getAgencyName } from "@/data/mockData";
 import { Route, RouteStatus } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
 import { MapPin, Clock, TrendingUp, Sparkles, FileText, Plus, Pencil } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.ROUTES;
@@ -121,7 +122,15 @@ export default function Routes() {
             <option value="planned">Planned</option><option value="in_progress">In Progress</option><option value="done">Done</option>
           </select>
         </Field>
-        <Field label="Notas"><textarea className={inputClass} rows={2} value={modal.route.notes} onChange={e => setField("notes", e.target.value)} /></Field>
+        <Field label="Notas">
+          <textarea className={inputClass} rows={2} value={modal.route.notes} onChange={e => setField("notes", e.target.value)} />
+          <AiNoteHelper
+            module="Rotas"
+            fields={{ route_code: modal.route.route_code, agency: getAgencyName(modal.route.agency_id), vehicle: modal.route.vehicle_type, stops: modal.route.planned_stops, minutes: modal.route.planned_minutes, km: modal.route.planned_distance_km, status: modal.route.status }}
+            fieldTarget="notas"
+            onAccept={(text) => setField("notes", text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );

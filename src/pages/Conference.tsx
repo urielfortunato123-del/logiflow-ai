@@ -5,6 +5,7 @@ import { mockConferences, mockAgencies, mockRoutes, getAgencyName } from "@/data
 import { Conference as ConferenceType } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
 import { FileCheck, AlertTriangle, Upload, Plus, Pencil } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.CONFERENCES;
@@ -107,7 +108,15 @@ export default function Conference() {
           <Field label="Pedidos Sys A"><input type="number" className={inputClass} value={modal.conf.orders_sys_a} onChange={e => setField("orders_sys_a", Number(e.target.value))} /></Field>
           <Field label="Pedidos Sys B"><input type="number" className={inputClass} value={modal.conf.orders_sys_b} onChange={e => setField("orders_sys_b", Number(e.target.value))} /></Field>
         </div>
-        <Field label="Motivo Divergência"><textarea className={inputClass} rows={2} value={modal.conf.divergence_reason || ""} onChange={e => setField("divergence_reason", e.target.value || null)} placeholder="Descreva o motivo..." /></Field>
+        <Field label="Motivo Divergência">
+          <textarea className={inputClass} rows={2} value={modal.conf.divergence_reason || ""} onChange={e => setField("divergence_reason", e.target.value || null)} placeholder="Descreva o motivo..." />
+          <AiNoteHelper
+            module="Conferência"
+            fields={{ agency: getAgencyName(modal.conf.agency_id), sacks: modal.conf.qty_sacks, cotas: modal.conf.qty_cotas, sys_a: modal.conf.orders_sys_a, sys_b: modal.conf.orders_sys_b, divergent: modal.conf.is_divergent }}
+            fieldTarget="motivo da divergência"
+            onAccept={(text) => setField("divergence_reason", text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );
