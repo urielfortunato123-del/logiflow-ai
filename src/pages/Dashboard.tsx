@@ -1,5 +1,6 @@
 import { MetricCard } from "@/components/MetricCard";
 import { StatusChip } from "@/components/StatusChip";
+import { RouteProgressChart, GateStatusChart, KPIBreakdownChart, WeeklyTrendChart, ConferenceAccuracyChart } from "@/components/DashboardCharts";
 import { mockGateOrders, mockRoutes, mockConferences, mockKPIs, mockIncidents, mockDrivers, getDriverName } from "@/data/mockData";
 import { GateOrder, Route, Conference as ConfType, KPI, Incident } from "@/types/domain";
 import { getStore, STORE_KEYS } from "@/lib/localStorage";
@@ -48,6 +49,17 @@ export default function Dashboard() {
             <span className="font-semibold text-sm text-foreground">{action.label}</span>
           </Link>
         ))}
+      </div>
+
+      {/* Charts */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <RouteProgressChart routes={routes} />
+        <GateStatusChart gateOrders={gateOrders} />
+      </div>
+      <div className="grid lg:grid-cols-3 gap-4">
+        <WeeklyTrendChart />
+        <ConferenceAccuracyChart conferences={conferences} />
+        <KPIBreakdownChart kpis={kpis} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
