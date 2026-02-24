@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const GEMMA_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+const GEMMA_MODEL = "google/gemma-3-4b-it:free";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
