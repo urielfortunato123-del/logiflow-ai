@@ -130,7 +130,6 @@ Mantenha respostas concisas e acionáveis.`;
       ? adjustedMessages 
       : [{ role: "user", content: systemPrompt }, ...adjustedMessages];
     const response = await callOpenRouter(finalMessages, OR_KEY, true);
-    const response = await callOpenRouter(allMessages, OR_KEY, true);
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
