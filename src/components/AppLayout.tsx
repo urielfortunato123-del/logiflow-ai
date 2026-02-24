@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Truck, Container, MapPin, FileCheck, BarChart3, AlertTriangle,
-  FileText, MessageSquare, Upload, Settings, Menu, X, ChevronLeft, LogOut, Compass
+  FileText, MessageSquare, Upload, Settings, Menu, X, ChevronLeft, LogOut, Compass, Brain
 } from "lucide-react";
 
 const navItems = [
@@ -17,6 +17,7 @@ const navItems = [
   { path: "/closing", label: "Fechamento", icon: FileText },
   { path: "/coverage", label: "Cobertura", icon: Compass },
   { path: "/ocr", label: "OCR Center", icon: Upload },
+  { path: "/text-analysis", label: "Análise de Texto", icon: Brain },
 ];
 
 interface AppLayoutProps {
