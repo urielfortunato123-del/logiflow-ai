@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { OnboardingTour } from "@/components/OnboardingTour";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Truck, Container, MapPin, FileCheck, BarChart3, AlertTriangle,
@@ -120,6 +121,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
       </div>
+
+      <OnboardingTour />
     </div>
   );
 }

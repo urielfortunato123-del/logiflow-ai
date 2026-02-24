@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Settings, Bot, Palette, Bell, Database, Save, Check, RefreshCw } from "lucide-react";
+import { Settings, Bot, Palette, Bell, Database, Save, Check, RefreshCw, Rocket } from "lucide-react";
 import { toast } from "sonner";
+import { StartTourButton } from "@/components/OnboardingTour";
 
 const SETTINGS_KEY = "logiops_settings";
 
@@ -276,6 +277,20 @@ export default function SettingsPage() {
           >
             <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${settings.notifications ? "translate-x-5" : ""}`} />
           </button>
+        </div>
+      </section>
+
+      {/* Tour & Status */}
+      <section className="glass-card rounded-lg p-5 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Rocket className="h-4 w-4 text-primary" /> Treinamento
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">Tour guiado do sistema</p>
+            <p className="text-xs text-muted-foreground">Percorra todos os módulos com explicações e dicas</p>
+          </div>
+          <StartTourButton />
         </div>
       </section>
 
