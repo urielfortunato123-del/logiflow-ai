@@ -10,9 +10,8 @@ serve(async (req) => {
 
   try {
     const { messages, context } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
     // Build system prompt with logistics context
     let systemPrompt = `Você é o assistente LogiOps AI, especialista em operações logísticas. 
 Responda sempre em português brasileiro, de forma clara e profissional.
@@ -41,16 +40,16 @@ Mantenha respostas concisas e acionáveis.`;
       }
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemma-3-27b-it:free",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "user", content: `[Instruções do sistema - siga rigorosamente]\n${systemPrompt}` },
           ...messages,
         ],
         stream: true,
