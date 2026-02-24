@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Send, Sparkles, Loader2 } from "lucide-react";
+import { Send, Sparkles, Loader2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { gatherOperationalContext } from "@/lib/operationalContext";
 
@@ -190,7 +190,7 @@ export default function Chatbot() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] rounded-lg px-4 py-3 text-sm ${
+              <div className={`relative group max-w-[80%] rounded-lg px-4 py-3 text-sm ${
                 msg.role === "user"
                   ? "gradient-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
@@ -225,6 +225,19 @@ export default function Chatbot() {
                     {msg.content}
                   </ReactMarkdown>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(msg.content);
+                    const btn = e.currentTarget;
+                    btn.dataset.copied = "true";
+                    setTimeout(() => { btn.dataset.copied = "false"; }, 1500);
+                    toast.success("Copiado!");
+                  }}
+                  className="absolute -bottom-3 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-muted hover:bg-accent text-muted-foreground data-[copied=true]:text-success"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           ))}
