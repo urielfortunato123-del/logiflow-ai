@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+const MODEL = "google/gemma-3-4b-it:free";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -108,7 +108,8 @@ Quando pedido para gerar tabelas, use tabelas markdown com | e ---.`;
       body: JSON.stringify({
         model: MODEL,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "user", content: `[INSTRUÇÕES DO SISTEMA]\n${systemPrompt}\n[/INSTRUÇÕES DO SISTEMA]` },
+          { role: "model", content: "Entendido. Estou pronto para ajudar com as operações logísticas usando os dados fornecidos." },
           ...messages,
         ],
         stream: true,
