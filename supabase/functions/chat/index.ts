@@ -5,16 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "google/gemma-3n-e4b-it:free";
+const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const MODEL = "google/gemini-3-flash-preview";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { messages, context } = await req.json();
-    const OR_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OR_KEY) throw new Error("OPENROUTER_API_KEY não configurada");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
 
     let systemPrompt = `Você é o assistente LogiOps AI, especialista em operações logísticas.
 Responda sempre em português brasileiro, de forma clara e profissional.
@@ -99,29 +99,27 @@ Quando pedido para gerar tabelas, use tabelas markdown com | e ---.`;
       systemPrompt += `\n=== FIM DOS DADOS ===`;
     }
 
-    // Gemma 3n doesn't support system role - prepend to first user message
-    const adjustedMessages = messages.map((m: any, i: number) => {
-      if (i === 0 && m.role === "user") {
-        return { role: "user", content: `[Instruções do assistente]\n${systemPrompt}\n\n[Pergunta do usuário]\n${m.content}` };
-      }
-      return m;
-    });
-    const finalMessages = adjustedMessages[0]?.role === "user" 
-      ? adjustedMessages 
-      : [{ role: "user", content: systemPrompt }, ...adjustedMessages];
-
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetch(GATEWAY_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OR_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: MODEL, messages: finalMessages, stream: true, temperature: 0.3, max_tokens: 2048 }),
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages,
+        ],
+        stream: true,
+        temperature: 0.3,
+        max_tokens: 2048,
+      }),
     });
 
     if (!response.ok) {
       const t = await response.text();
-      console.error("OpenRouter error:", response.status, t);
+      console.error("AI gateway error:", response.status, t);
       if (response.status === 429) throw { status: 429, message: "Rate limit excedido. Tente novamente." };
       if (response.status === 402) throw { status: 402, message: "Créditos insuficientes." };
       throw new Error(`AI erro ${response.status}`);
