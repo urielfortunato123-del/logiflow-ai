@@ -10,10 +10,10 @@ serve(async (req) => {
 
   try {
     const { messages, context } = await req.json();
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
-    // Build system prompt with logistics context
-    let systemPrompt = `Você é o assistente LogiOps AI, especialista em operações logísticas. 
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    let systemPrompt = `Você é o assistente LogiOps AI, especialista em operações logísticas.
 Responda sempre em português brasileiro, de forma clara e profissional.
 Você ajuda analistas de logística com:
 - Análise de rotas e desvios
@@ -23,33 +23,88 @@ Você ajuda analistas de logística com:
 - Análise de KPIs de segurança e performance
 - Sugestões de melhoria operacional
 
-Quando citar dados, referencie a fonte (ex: "Baseado na conferência #123 de 24/02/2026...").
-Nunca invente dados — se não tiver a informação, diga que precisa verificar.
+IMPORTANTE: Você tem acesso aos dados REAIS da operação de hoje. Use esses dados para dar respostas precisas.
+Quando citar dados, seja específico (ex: "A rota MAR-001 está com 5 de 12 paradas realizadas").
+Nunca invente dados — use apenas os dados fornecidos no contexto.
 Mantenha respostas concisas e acionáveis.`;
 
     if (context) {
-      systemPrompt += `\n\nContexto atual da operação (${context.date || "hoje"}):\n`;
+      systemPrompt += `\n\n=== DADOS REAIS DA OPERAÇÃO (${context.date || "hoje"}) ===\n`;
+
       if (context.dashboard_snapshot) {
-        systemPrompt += `Dashboard: ${JSON.stringify(context.dashboard_snapshot)}\n`;
+        const s = context.dashboard_snapshot;
+        systemPrompt += `\nRESUMO DO DASHBOARD:
+- Gate Queue: ${s.total_gate_orders} veículos total | ${s.vehicles_in_queue} aguardando | ${s.at_dock || 0} em doca | ${s.loading_now} carregando | ${s.finished || 0} finalizados
+- Rotas: ${s.routes_total} total | ${s.routes_planned} planejadas | ${s.routes_in_progress} em andamento | ${s.routes_done} concluídas
+- Conferências: ${s.total_conferences} total | ${s.divergences} com divergência
+- KPIs: ${s.total_kpis} indicadores registrados
+- Incidentes: ${s.total_incidents} ocorrências\n`;
       }
-      if (context.selected_entity) {
-        systemPrompt += `Entidade selecionada: ${JSON.stringify(context.selected_entity)}\n`;
+
+      if (context.gate_orders?.length) {
+        systemPrompt += `\nORDENS NO GATE (detalhe):\n`;
+        context.gate_orders.forEach((o: any) => {
+          systemPrompt += `- Placa ${o.plate} | Motorista: ${o.driver} | Doca: ${o.dock || "sem doca"} | Status: ${o.status}`;
+          if (o.released_at) systemPrompt += ` | Liberado: ${o.released_at}`;
+          if (o.loading_end_at) systemPrompt += ` | Finalizado: ${o.loading_end_at}`;
+          systemPrompt += `\n`;
+        });
       }
-      if (context.attachments?.length) {
-        systemPrompt += `Anexos disponíveis: ${context.attachments.map((a: any) => a.extracted_text || "").join("\n")}\n`;
+
+      if (context.routes?.length) {
+        systemPrompt += `\nROTAS (detalhe):\n`;
+        context.routes.forEach((r: any) => {
+          systemPrompt += `- ${r.code} | Agência: ${r.agency} | Status: ${r.status} | Paradas: ${r.actual_stops ?? 0}/${r.planned_stops} | Tempo: ${r.actual_minutes ?? 0}/${r.planned_minutes}min | ${r.planned_km}km`;
+          if (r.notes) systemPrompt += ` | Notas: ${r.notes}`;
+          systemPrompt += `\n`;
+        });
       }
+
+      if (context.conferences?.length) {
+        systemPrompt += `\nCONFERÊNCIAS (detalhe):\n`;
+        context.conferences.forEach((c: any) => {
+          systemPrompt += `- Agência: ${c.agency} | Sacas: ${c.sacks} | Cotas: ${c.cotas} | SysA: ${c.sys_a} | SysB: ${c.sys_b} | Divergente: ${c.divergent ? "SIM" : "NÃO"}`;
+          if (c.reason) systemPrompt += ` | Motivo: ${c.reason}`;
+          systemPrompt += `\n`;
+        });
+      }
+
+      if (context.kpis?.length) {
+        systemPrompt += `\nKPIs:\n`;
+        context.kpis.forEach((k: any) => {
+          systemPrompt += `- [${k.type}] ${k.metric}: ${k.value} ${k.unit} | Motorista: ${k.driver} | Transp: ${k.carrier}\n`;
+        });
+      }
+
+      if (context.incidents?.length) {
+        systemPrompt += `\nINCIDENTES:\n`;
+        context.incidents.forEach((i: any) => {
+          systemPrompt += `- ${i.type} | ${i.duration_min}min | Impacto: ${i.impact}`;
+          if (i.notes) systemPrompt += ` | Notas: ${i.notes}`;
+          systemPrompt += `\n`;
+        });
+      }
+
+      if (context.closing?.length) {
+        systemPrompt += `\nFECHAMENTO:\n`;
+        context.closing.forEach((c: any) => {
+          systemPrompt += `- Data: ${c.date} | Pacotes saídos: ${c.packages_out} | Em base: ${c.packages_in_base}\n`;
+        });
+      }
+
+      systemPrompt += `\n=== FIM DOS DADOS ===`;
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemma-3-27b-it:free",
+        model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "user", content: `[Instruções do sistema - siga rigorosamente]\n${systemPrompt}` },
+          { role: "system", content: systemPrompt },
           ...messages,
         ],
         stream: true,
