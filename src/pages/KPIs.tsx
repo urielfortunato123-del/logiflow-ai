@@ -6,6 +6,7 @@ import { mockKPIs, mockDrivers, getDriverName } from "@/data/mockData";
 import { KPI, KPIType } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
 import { BarChart3, Shield, Gauge, GraduationCap, Plus, Upload, Pencil } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.KPIS;
@@ -117,7 +118,15 @@ export default function KPIs() {
             <option value="manual">Manual</option><option value="import">Import</option><option value="ocr">OCR</option>
           </select>
         </Field>
-        <Field label="Notas"><textarea className={inputClass} rows={2} value={modal.kpi.notes} onChange={e => setField("notes", e.target.value)} /></Field>
+        <Field label="Notas">
+          <textarea className={inputClass} rows={2} value={modal.kpi.notes} onChange={e => setField("notes", e.target.value)} />
+          <AiNoteHelper
+            module="KPIs"
+            fields={{ type: modal.kpi.kpi_type, metric: modal.kpi.metric_name, value: modal.kpi.metric_value, unit: modal.kpi.unit, driver: getDriverName(modal.kpi.driver_id), carrier: modal.kpi.carrier_name }}
+            fieldTarget="notas"
+            onAccept={(text) => setField("notes", text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );

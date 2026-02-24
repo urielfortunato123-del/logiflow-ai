@@ -5,6 +5,7 @@ import { mockGateOrders, mockDrivers, getDriverName } from "@/data/mockData";
 import { GateOrder, GateOrderStatus } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
 import { Plus, Search, Printer, ArrowRight, Pencil, Trash2 } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.GATE_ORDERS;
@@ -142,6 +143,15 @@ export default function GateQueue() {
             </select>
           </Field>
         </div>
+        <Field label="Observações">
+          <textarea className={inputClass} rows={2} value={(modal.order as any).notes || ""} onChange={e => setField("notes" as any, e.target.value)} placeholder="Observações sobre a ordem..." />
+          <AiNoteHelper
+            module="Gate Queue"
+            fields={{ plate: modal.order.plate, driver: getDriverName(modal.order.driver_id), dock: modal.order.dock, status: modal.order.status }}
+            fieldTarget="observações"
+            onAccept={(text) => setField("notes" as any, text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );

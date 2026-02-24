@@ -5,6 +5,7 @@ import { mockIncidents } from "@/data/mockData";
 import { Incident, IncidentType } from "@/types/domain";
 import { getStore, setStore, addItem, updateItem, deleteItem, genId, STORE_KEYS } from "@/lib/localStorage";
 import { AlertTriangle, Plus, Clock, Zap, Pencil } from "lucide-react";
+import { AiNoteHelper } from "@/components/AiNoteHelper";
 import { toast } from "sonner";
 
 const K = STORE_KEYS.INCIDENTS;
@@ -73,8 +74,24 @@ export default function Incidents() {
           <Field label="Duração (min)"><input type="number" className={inputClass} value={modal.inc.duration_min} onChange={e => setField("duration_min", Number(e.target.value))} /></Field>
           <Field label="Data"><input type="date" className={inputClass} value={modal.inc.date} onChange={e => setField("date", e.target.value)} /></Field>
         </div>
-        <Field label="Impacto"><input className={inputClass} value={modal.inc.impact} onChange={e => setField("impact", e.target.value)} placeholder="Descreva o impacto..." /></Field>
-        <Field label="Notas"><textarea className={inputClass} rows={2} value={modal.inc.notes} onChange={e => setField("notes", e.target.value)} /></Field>
+        <Field label="Impacto">
+          <input className={inputClass} value={modal.inc.impact} onChange={e => setField("impact", e.target.value)} placeholder="Descreva o impacto..." />
+          <AiNoteHelper
+            module="Incidentes"
+            fields={{ type: typeLabels[modal.inc.incident_type], duration: modal.inc.duration_min, date: modal.inc.date }}
+            fieldTarget="impacto"
+            onAccept={(text) => setField("impact", text)}
+          />
+        </Field>
+        <Field label="Notas">
+          <textarea className={inputClass} rows={2} value={modal.inc.notes} onChange={e => setField("notes", e.target.value)} />
+          <AiNoteHelper
+            module="Incidentes"
+            fields={{ type: typeLabels[modal.inc.incident_type], duration: modal.inc.duration_min, date: modal.inc.date, impact: modal.inc.impact }}
+            fieldTarget="notas"
+            onAccept={(text) => setField("notes", text)}
+          />
+        </Field>
       </CrudModal>
     </div>
   );
