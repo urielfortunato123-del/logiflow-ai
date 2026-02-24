@@ -5,6 +5,45 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const HF_BASE = "https://api-inference.huggingface.co/models";
+
+// Two complementary models:
+// 1. OCR: extracts printed text from images
+// 2. Vision: describes/understands image content
+const MODELS = {
+  ocr: "microsoft/trocr-large-printed",
+  vision: "Salesforce/blip-image-captioning-large",
+};
+
+async function callHF(model: string, imageBytes: Uint8Array, apiKey: string): Promise<string> {
+  const resp = await fetch(`${HF_BASE}/${model}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: imageBytes,
+  });
+
+  if (resp.status === 503) {
+    const body = await resp.json().catch(() => ({}));
+    const wait = body.estimated_time ? Math.ceil(body.estimated_time) : 30;
+    throw { loading: true, wait, model };
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error(`HF ${model} error:`, resp.status, text);
+    throw new Error(`Erro ${resp.status} no modelo ${model}`);
+  }
+
+  const result = await resp.json();
+
+  if (Array.isArray(result)) {
+    return result.map((r: any) => r.generated_text || r.caption || "").filter(Boolean).join("\n");
+  }
+  if (result.generated_text) return result.generated_text;
+  if (result.caption) return result.caption;
+  return JSON.stringify(result);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -12,69 +51,61 @@ serve(async (req) => {
     const HF_KEY = Deno.env.get("HUGGING_FACE_API_KEY");
     if (!HF_KEY) throw new Error("HUGGING_FACE_API_KEY não configurada");
 
-    const contentType = req.headers.get("content-type") || "";
+    const { image_base64, filename, mode } = await req.json();
+    if (!image_base64) throw new Error("image_base64 é obrigatório");
 
-    let imageBytes: Uint8Array;
-    let filename = "image";
+    // Decode base64
+    const raw = image_base64.replace(/^data:[^;]+;base64,/, "");
+    const binary = atob(raw);
+    const imageBytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) imageBytes[i] = binary.charCodeAt(i);
 
-    if (contentType.includes("multipart/form-data")) {
-      const form = await req.formData();
-      const file = form.get("file") as File | null;
-      if (!file) throw new Error("Nenhum arquivo enviado");
-      filename = file.name;
-      imageBytes = new Uint8Array(await file.arrayBuffer());
-    } else {
-      // JSON with base64
-      const { image_base64, filename: fn } = await req.json();
-      if (!image_base64) throw new Error("image_base64 é obrigatório");
-      filename = fn || filename;
+    const selectedMode = mode || "both"; // "ocr" | "vision" | "both"
 
-      // Remove data URI prefix if present
-      const raw = image_base64.replace(/^data:[^;]+;base64,/, "");
-      const binary = atob(raw);
-      imageBytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) imageBytes[i] = binary.charCodeAt(i);
+    const results: Record<string, string> = {};
+    const errors: string[] = [];
+
+    const tasks: Promise<void>[] = [];
+
+    if (selectedMode === "ocr" || selectedMode === "both") {
+      tasks.push(
+        callHF(MODELS.ocr, imageBytes, HF_KEY)
+          .then(t => { results.ocr = t; })
+          .catch(e => {
+            if (e.loading) { errors.push(`Modelo OCR carregando (~${e.wait}s). Tente novamente.`); }
+            else { errors.push(`OCR: ${e.message}`); }
+          })
+      );
     }
 
-    // Use microsoft/trocr-large-printed for OCR (image-to-text)
-    const hfResp = await fetch(
-      "https://api-inference.huggingface.co/models/microsoft/trocr-large-printed",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${HF_KEY}` },
-        body: imageBytes,
-      }
-    );
-
-    if (!hfResp.ok) {
-      const errText = await hfResp.text();
-      console.error("HF error:", hfResp.status, errText);
-
-      // Model loading - retry hint
-      if (hfResp.status === 503) {
-        return new Response(
-          JSON.stringify({ error: "Modelo carregando na Hugging Face. Tente novamente em ~30s.", loading: true }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      throw new Error(`Hugging Face API erro ${hfResp.status}`);
+    if (selectedMode === "vision" || selectedMode === "both") {
+      tasks.push(
+        callHF(MODELS.vision, imageBytes, HF_KEY)
+          .then(t => { results.vision = t; })
+          .catch(e => {
+            if (e.loading) { errors.push(`Modelo de visão carregando (~${e.wait}s). Tente novamente.`); }
+            else { errors.push(`Visão: ${e.message}`); }
+          })
+      );
     }
 
-    const result = await hfResp.json();
+    await Promise.all(tasks);
 
-    // trocr returns [{ generated_text: "..." }]
-    let extractedText = "";
-    if (Array.isArray(result)) {
-      extractedText = result.map((r: any) => r.generated_text || "").join("\n");
-    } else if (result.generated_text) {
-      extractedText = result.generated_text;
-    } else {
-      extractedText = JSON.stringify(result);
+    // Build combined text
+    const parts: string[] = [];
+    if (results.ocr) parts.push(`📝 Texto extraído (OCR):\n${results.ocr}`);
+    if (results.vision) parts.push(`👁️ Descrição da imagem:\n${results.vision}`);
+    if (errors.length && !parts.length) {
+      return new Response(
+        JSON.stringify({ error: errors.join(" | "), loading: errors.some(e => e.includes("carregando")) }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const extracted_text = parts.join("\n\n") + (errors.length ? `\n\n⚠️ ${errors.join(" | ")}` : "");
 
     return new Response(
-      JSON.stringify({ extracted_text: extractedText.trim(), filename, model: "microsoft/trocr-large-printed" }),
+      JSON.stringify({ extracted_text, filename: filename || "image", models: Object.keys(results), errors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
