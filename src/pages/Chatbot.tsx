@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { Send, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { gatherOperationalContext } from "@/lib/operationalContext";
@@ -174,7 +175,9 @@ export default function Chatbot() {
                   ? "gradient-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
               }`}>
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <div className="prose prose-sm prose-invert max-w-none [&>p]:m-0 [&>ul]:my-1 [&>ol]:my-1 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
