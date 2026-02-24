@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const GEMMA_MODEL = "google/gemma-3-4b-it:free";
+const GEMMA_MODEL = "google/gemma-3n-4b-it:free";
 
 const HF_BASE = "https://router.huggingface.co/hf-inference/models";
 const HF_MODELS = {
