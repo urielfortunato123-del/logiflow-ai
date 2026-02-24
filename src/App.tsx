@@ -3,10 +3,26 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+import { AppLayout } from "@/components/AppLayout";
+import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
+import GateQueue from "@/pages/GateQueue";
+import DockBoard from "@/pages/DockBoard";
+import RoutesPage from "@/pages/Routes";
+import Conference from "@/pages/Conference";
+import KPIs from "@/pages/KPIs";
+import Incidents from "@/pages/Incidents";
+import Closing from "@/pages/Closing";
+import Coverage from "@/pages/Coverage";
+import OCRCenter from "@/pages/OCRCenter";
+import Chatbot from "@/pages/Chatbot";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function LayoutRoute({ children }: { children: React.ReactNode }) {
+  return <AppLayout>{children}</AppLayout>;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -15,8 +31,19 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<LayoutRoute><Dashboard /></LayoutRoute>} />
+          <Route path="/gate-queue" element={<LayoutRoute><GateQueue /></LayoutRoute>} />
+          <Route path="/dock" element={<LayoutRoute><DockBoard /></LayoutRoute>} />
+          <Route path="/routes" element={<LayoutRoute><RoutesPage /></LayoutRoute>} />
+          <Route path="/conference" element={<LayoutRoute><Conference /></LayoutRoute>} />
+          <Route path="/kpis" element={<LayoutRoute><KPIs /></LayoutRoute>} />
+          <Route path="/incidents" element={<LayoutRoute><Incidents /></LayoutRoute>} />
+          <Route path="/closing" element={<LayoutRoute><Closing /></LayoutRoute>} />
+          <Route path="/coverage" element={<LayoutRoute><Coverage /></LayoutRoute>} />
+          <Route path="/ocr" element={<LayoutRoute><OCRCenter /></LayoutRoute>} />
+          <Route path="/chatbot" element={<LayoutRoute><Chatbot /></LayoutRoute>} />
+          <Route path="/settings" element={<LayoutRoute><div className="text-foreground">Configurações em breve...</div></LayoutRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
