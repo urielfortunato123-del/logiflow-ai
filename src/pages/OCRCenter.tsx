@@ -1,4 +1,4 @@
-import { Upload, FileText, Image, Eye, Trash2, Send, Sparkles, Loader2 } from "lucide-react";
+import { Upload, FileText, Image, Eye, Trash2, Sparkles, Loader2, ScanLine } from "lucide-react";
 import { useState, useRef } from "react";
 import { genId, getStore, setStore, STORE_KEYS } from "@/lib/localStorage";
 import { toast } from "sonner";
@@ -13,6 +13,8 @@ interface Attachment {
 }
 
 const K = STORE_KEYS.ATTACHMENTS;
+const OCR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-extract`;
+const AI_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assist`;
 
 export default function OCRCenter() {
   const [dragActive, setDragActive] = useState(false);
@@ -26,13 +28,15 @@ export default function OCRCenter() {
   const processFile = async (file: File) => {
     setProcessing(true);
     try {
-      // Read file as text for basic extraction
       let extractedText = "";
+
       if (file.type.includes("text") || file.name.endsWith(".csv")) {
         extractedText = await file.text();
+      } else if (file.type.startsWith("image/")) {
+        // Send image to Hugging Face OCR via edge function
+        extractedText = await ocrImage(file);
       } else {
-        // For images/PDFs we store metadata — real OCR would go through edge function
-        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nPara OCR completo, conecte um serviço de extração de texto.`;
+        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado para OCR. Envie uma imagem (JPG, PNG) para extração de texto.`;
       }
 
       const attachment: Attachment = {
@@ -82,8 +86,11 @@ export default function OCRCenter() {
         className={`glass-card rounded-lg p-12 text-center border-2 border-dashed transition-colors cursor-pointer ${dragActive ? "border-primary bg-primary/5" : "border-border"}`}
       >
         <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-        <p className="text-sm font-medium text-foreground mb-1">{processing ? "Processando..." : "Arraste imagens ou PDFs aqui"}</p>
-        <p className="text-xs text-muted-foreground mb-4">Suporta JPG, PNG, PDF, CSV, TXT</p>
+        <p className="text-sm font-medium text-foreground mb-1">{processing ? "Processando OCR..." : "Arraste imagens ou PDFs aqui"}</p>
+        <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, CSV, TXT</p>
+        <p className="text-xs text-muted-foreground mb-4 flex items-center justify-center gap-1">
+          <ScanLine className="h-3 w-3" /> Imagens são processadas com OCR via Hugging Face
+        </p>
         <button className="px-6 py-2.5 rounded-lg gradient-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity">Selecionar Arquivos</button>
       </div>
 
@@ -128,7 +135,42 @@ export default function OCRCenter() {
   );
 }
 
-const AI_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assist`;
+/** Send image to HF OCR edge function */
+async function ocrImage(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = reader.result as string;
+        const resp = await fetch(OCR_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ image_base64: base64, filename: file.name }),
+        });
+
+        if (resp.status === 503) {
+          resolve(`[OCR] Modelo carregando na Hugging Face. Tente novamente em ~30 segundos.`);
+          return;
+        }
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          resolve(`[OCR Erro] ${err.error || "Falha na extração"}`);
+          return;
+        }
+
+        const data = await resp.json();
+        resolve(data.extracted_text || "[Nenhum texto extraído]");
+      } catch (e: any) {
+        resolve(`[OCR Erro] ${e.message || "Falha na conexão"}`);
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function OcrAiAnalysis({ text, filename }: { text: string; filename: string }) {
   const [loading, setLoading] = useState(false);
