@@ -5,13 +5,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GEMMA_MODEL = "google/gemma-3n-e4b-it:free";
+
+async function callOpenRouter(messages: any[], apiKey: string, stream = false) {
+  const resp = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: GEMMA_MODEL, messages, stream, temperature: 0.3 }),
+  });
+
+  if (!resp.ok) {
+    const t = await resp.text();
+    console.error("OpenRouter error:", resp.status, t);
+    if (resp.status === 429) throw { status: 429, message: "Rate limit excedido. Tente novamente." };
+    if (resp.status === 402) throw { status: 402, message: "Créditos insuficientes no OpenRouter." };
+    throw new Error(`OpenRouter erro ${resp.status}`);
+  }
+  return resp;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { messages, context } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const OR_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OR_KEY) throw new Error("OPENROUTER_API_KEY não configurada");
 
     let systemPrompt = `Você é o assistente LogiOps AI, especialista em operações logísticas.
 Responda sempre em português brasileiro, de forma clara e profissional.
@@ -95,48 +118,28 @@ Mantenha respostas concisas e acionáveis.`;
       systemPrompt += `\n=== FIM DOS DADOS ===`;
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-        temperature: 0.3,
-      }),
+    // Gemma 3n doesn't support system role - prepend system prompt to first user message
+    const adjustedMessages = messages.map((m: any, i: number) => {
+      if (i === 0 && m.role === "user") {
+        return { role: "user", content: `[Instruções do assistente]\n${systemPrompt}\n\n[Pergunta do usuário]\n${m.content}` };
+      }
+      return m;
     });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos de IA insuficientes. Adicione créditos em Settings → Workspace → Usage." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "Erro no gateway de IA" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // If first message isn't user, prepend as user message
+    const finalMessages = adjustedMessages[0]?.role === "user" 
+      ? adjustedMessages 
+      : [{ role: "user", content: systemPrompt }, ...adjustedMessages];
+    const response = await callOpenRouter(finalMessages, OR_KEY, true);
+    const response = await callOpenRouter(allMessages, OR_KEY, true);
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const status = e.status || 500;
+    return new Response(JSON.stringify({ error: e.message || "Erro desconhecido" }), {
+      status, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
