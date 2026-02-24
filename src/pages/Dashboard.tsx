@@ -4,7 +4,8 @@ import { RouteProgressChart, GateStatusChart, KPIBreakdownChart, WeeklyTrendChar
 import { mockGateOrders, mockRoutes, mockConferences, mockKPIs, mockIncidents, mockDrivers, getDriverName } from "@/data/mockData";
 import { GateOrder, Route, Conference as ConfType, KPI, Incident } from "@/types/domain";
 import { getStore, STORE_KEYS } from "@/lib/localStorage";
-import { Truck, Container, AlertTriangle, MapPin, GraduationCap, Package, Plus, FileCheck, Upload, FileText } from "lucide-react";
+import { getDockHistory } from "@/pages/DockBoard";
+import { Truck, Container, AlertTriangle, MapPin, GraduationCap, Package, Plus, FileCheck, Upload, FileText, Timer, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const conferences = getStore<ConfType>(STORE_KEYS.CONFERENCES, mockConferences);
   const kpis = getStore<KPI>(STORE_KEYS.KPIS, mockKPIs);
   const incidents = getStore<Incident>(STORE_KEYS.INCIDENTS, mockIncidents);
+  const dockHistory = getDockHistory();
 
   const inQueue = gateOrders.filter(o => o.status === "waiting" || o.status === "released").length;
   const loadingNow = gateOrders.filter(o => o.status === "loading" || o.status === "at_dock").length;
@@ -25,6 +27,14 @@ export default function Dashboard() {
   }).length;
   const pendingTrainings = kpis.filter(k => k.kpi_type === "training").length;
 
+  // Dock metrics
+  const todayHistory = dockHistory.filter(h => h.date === new Date().toISOString().split("T")[0]);
+  const avgDockTimeMin = todayHistory.length > 0
+    ? Math.round(todayHistory.reduce((sum, h) => sum + h.durationMs, 0) / todayHistory.length / 60000)
+    : 0;
+  const finishedToday = gateOrders.filter(o => o.status === "finished").length;
+  const docksOccupied = gateOrders.filter(o => o.dock && ["at_dock", "loading"].includes(o.status)).length;
+
   const quickActions = [
     { label: "Nova Ordem", icon: Plus, path: "/gate-queue", color: "gradient-primary" },
     { label: "Conferência", icon: FileCheck, path: "/conference", color: "gradient-warning" },
@@ -34,11 +44,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Na Fila" value={inQueue} icon={Truck} variant="warning" trend="down" trendValue="2" />
         <MetricCard title="Carregando" value={loadingNow} icon={Container} variant="info" trend="up" trendValue="1" />
         <MetricCard title="Divergências" value={divergences} icon={AlertTriangle} variant={divergences > 0 ? "critical" : "success"} />
         <MetricCard title="Rotas em Risco" value={routesAtRisk} icon={MapPin} variant={routesAtRisk > 0 ? "warning" : "success"} />
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard title="Tempo Médio Doca" value={`${avgDockTimeMin}min`} icon={Timer} variant="info" />
+        <MetricCard title="Docas Ocupadas" value={`${docksOccupied}/6`} icon={Container} variant={docksOccupied >= 5 ? "warning" : "info"} />
+        <MetricCard title="Finalizados Hoje" value={finishedToday} icon={Clock} variant="success" />
         <MetricCard title="Treinamentos" value={pendingTrainings} subtitle="pendentes" icon={GraduationCap} variant={pendingTrainings > 0 ? "warning" : "success"} />
       </div>
 
