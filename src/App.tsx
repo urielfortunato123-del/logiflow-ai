@@ -18,6 +18,7 @@ import OCRCenter from "@/pages/OCRCenter";
 import Chatbot from "@/pages/Chatbot";
 import SettingsPage from "@/pages/Settings";
 import TextAnalysis from "@/pages/TextAnalysis";
+import Fleet from "@/pages/Fleet";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<LayoutRoute><Dashboard /></LayoutRoute>} />
           <Route path="/gate-queue" element={<LayoutRoute><GateQueue /></LayoutRoute>} />
+          <Route path="/fleet" element={<LayoutRoute><Fleet /></LayoutRoute>} />
           <Route path="/dock" element={<LayoutRoute><DockBoard /></LayoutRoute>} />
           <Route path="/routes" element={<LayoutRoute><RoutesPage /></LayoutRoute>} />
           <Route path="/conference" element={<LayoutRoute><Conference /></LayoutRoute>} />
