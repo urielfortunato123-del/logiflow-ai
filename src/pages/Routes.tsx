@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { StatusChip } from "@/components/StatusChip";
 import { CrudModal, Field, inputClass, selectClass } from "@/components/CrudModal";
 import { mockRoutes, mockAgencies, getAgencyName } from "@/data/mockData";
@@ -16,6 +17,7 @@ const emptyRoute = (): Route => ({
 });
 
 export default function Routes() {
+  const navigate = useNavigate();
   const [routes, setRoutes] = useState<Route[]>(() => getStore(K, mockRoutes));
   const [modal, setModal] = useState<{ open: boolean; route: Route; isNew: boolean }>({ open: false, route: emptyRoute(), isNew: true });
 
@@ -84,8 +86,8 @@ export default function Routes() {
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground"><TrendingUp className="h-3 w-3" /> {route.planned_distance_km} km planejados</div>
               <div className="flex gap-2 pt-1">
-                <button onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><Sparkles className="h-3 w-3 text-primary" /> Analisar com IA</button>
-                <button onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><FileText className="h-3 w-3" /> Prep. Reunião</button>
+                <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Analise a rota ${route.route_code} (${getAgencyName(route.agency_id)}): ${route.actual_stops ?? 0}/${route.planned_stops} paradas, ${route.actual_minutes ?? 0}/${route.planned_minutes} min, status ${route.status}. Identifique problemas e sugira melhorias.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><Sparkles className="h-3 w-3 text-primary" /> Analisar com IA</button>
+                <button onClick={e => { e.stopPropagation(); navigate(`/chatbot?prompt=${encodeURIComponent(`Prepare um resumo para reunião sobre a rota ${route.route_code} da agência ${getAgencyName(route.agency_id)}. Inclua: progresso (${route.actual_stops ?? 0}/${route.planned_stops} paradas), tempo (${route.actual_minutes ?? 0}/${route.planned_minutes} min), distância ${route.planned_distance_km} km, status ${route.status}. ${route.notes ? `Obs: ${route.notes}` : ""} Liste pontos de atenção e próximos passos.`)}`); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"><FileText className="h-3 w-3" /> Prep. Reunião</button>
               </div>
             </div>
           );

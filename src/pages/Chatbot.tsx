@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -108,20 +109,36 @@ async function streamChat({
 }
 
 export default function Chatbot() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "Olá! Sou o assistente LogiOps AI, alimentado por Gemini. Posso ajudar com análise de rotas, conferências, preparação de reuniões e muito mais. Como posso ajudar?" },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialPromptSent = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const send = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMsg: Msg = { role: "user", content: input };
+  // Auto-send initial prompt from URL params (e.g., ?prompt=...)
+  useEffect(() => {
+    const prompt = searchParams.get("prompt");
+    if (prompt && !initialPromptSent.current) {
+      initialPromptSent.current = true;
+      setSearchParams({}, { replace: true });
+      // Trigger send after component is ready
+      setTimeout(() => {
+        sendMessage(prompt);
+      }, 300);
+    }
+  }, [searchParams]);
+
+  const sendMessage = async (text?: string) => {
+    const content = text || input;
+    if (!content.trim() || isLoading) return;
+    const userMsg: Msg = { role: "user", content };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
@@ -232,13 +249,13 @@ export default function Chatbot() {
               type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && send()}
+              onKeyDown={e => e.key === "Enter" && sendMessage()}
               placeholder="Pergunte sobre operações, rotas, divergências..."
               className="flex-1 px-4 py-2.5 rounded-lg ops-input text-sm border"
               disabled={isLoading}
             />
             <button
-              onClick={send}
+              onClick={() => sendMessage()}
               disabled={!input.trim() || isLoading}
               className="p-2.5 rounded-lg gradient-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             >
