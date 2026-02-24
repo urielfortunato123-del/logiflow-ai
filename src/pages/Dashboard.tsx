@@ -1,20 +1,28 @@
 import { MetricCard } from "@/components/MetricCard";
 import { StatusChip } from "@/components/StatusChip";
-import { mockGateOrders, mockRoutes, mockConferences, mockKPIs, mockIncidents, getDriverName } from "@/data/mockData";
+import { mockGateOrders, mockRoutes, mockConferences, mockKPIs, mockIncidents, mockDrivers, getDriverName } from "@/data/mockData";
+import { GateOrder, Route, Conference as ConfType, KPI, Incident } from "@/types/domain";
+import { getStore, STORE_KEYS } from "@/lib/localStorage";
 import { Truck, Container, AlertTriangle, MapPin, GraduationCap, Package, Plus, FileCheck, Upload, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
-  const inQueue = mockGateOrders.filter(o => o.status === "waiting" || o.status === "released").length;
-  const loadingNow = mockGateOrders.filter(o => o.status === "loading" || o.status === "at_dock").length;
-  const divergences = mockConferences.filter(c => c.is_divergent).length;
-  const routesAtRisk = mockRoutes.filter(r => {
+  const gateOrders = getStore<GateOrder>(STORE_KEYS.GATE_ORDERS, mockGateOrders);
+  const routes = getStore<Route>(STORE_KEYS.ROUTES, mockRoutes);
+  const conferences = getStore<ConfType>(STORE_KEYS.CONFERENCES, mockConferences);
+  const kpis = getStore<KPI>(STORE_KEYS.KPIS, mockKPIs);
+  const incidents = getStore<Incident>(STORE_KEYS.INCIDENTS, mockIncidents);
+
+  const inQueue = gateOrders.filter(o => o.status === "waiting" || o.status === "released").length;
+  const loadingNow = gateOrders.filter(o => o.status === "loading" || o.status === "at_dock").length;
+  const divergences = conferences.filter(c => c.is_divergent).length;
+  const routesAtRisk = routes.filter(r => {
     if (r.status !== "in_progress" || !r.actual_stops) return false;
     const progress = r.actual_stops / r.planned_stops;
     const timeProgress = (r.actual_minutes ?? 0) / r.planned_minutes;
     return timeProgress > progress + 0.15;
   }).length;
-  const pendingTrainings = mockKPIs.filter(k => k.kpi_type === "training").length;
+  const pendingTrainings = kpis.filter(k => k.kpi_type === "training").length;
 
   const quickActions = [
     { label: "Nova Ordem", icon: Plus, path: "/gate-queue", color: "gradient-primary" },
@@ -25,7 +33,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard title="Na Fila" value={inQueue} icon={Truck} variant="warning" trend="down" trendValue="2" />
         <MetricCard title="Carregando" value={loadingNow} icon={Container} variant="info" trend="up" trendValue="1" />
@@ -34,7 +41,6 @@ export default function Dashboard() {
         <MetricCard title="Treinamentos" value={pendingTrainings} subtitle="pendentes" icon={GraduationCap} variant={pendingTrainings > 0 ? "warning" : "success"} />
       </div>
 
-      {/* Quick Actions */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {quickActions.map(action => (
           <Link key={action.label} to={action.path} className={`${action.color} rounded-lg p-4 flex items-center gap-3 hover:opacity-90 transition-opacity`}>
@@ -45,14 +51,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Gate Queue Preview */}
         <div className="glass-card rounded-lg">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h3 className="font-semibold text-sm text-foreground">Fila do Pátio</h3>
             <Link to="/gate-queue" className="text-xs text-primary hover:underline">Ver tudo →</Link>
           </div>
           <div className="divide-y divide-border">
-            {mockGateOrders.slice(0, 4).map(order => (
+            {gateOrders.slice(0, 4).map(order => (
               <div key={order.id} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className="font-mono text-sm font-bold text-foreground">{order.plate}</div>
@@ -67,7 +72,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Alerts */}
         <div className="glass-card rounded-lg">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h3 className="font-semibold text-sm text-foreground">Alertas do Dia</h3>
@@ -82,7 +86,7 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-            {mockIncidents.map(inc => (
+            {incidents.map(inc => (
               <div key={inc.id} className="flex items-start gap-3 p-3 rounded-md bg-warning/5 border border-warning/20">
                 <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
                 <div>
@@ -104,7 +108,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Routes Summary */}
       <div className="glass-card rounded-lg">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-sm text-foreground">Rotas de Hoje</h3>
@@ -121,7 +124,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {mockRoutes.map(route => (
+              {routes.map(route => (
                 <tr key={route.id} className="hover:bg-accent/50 transition-colors">
                   <td className="px-4 py-3 font-mono font-semibold text-foreground">{route.route_code}</td>
                   <td className="px-4 py-3 text-muted-foreground">{route.actual_stops ?? "—"} / {route.planned_stops}</td>
