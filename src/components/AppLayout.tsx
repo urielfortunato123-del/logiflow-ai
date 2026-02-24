@@ -4,12 +4,13 @@ import { OnboardingTour } from "@/components/OnboardingTour";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Truck, Container, MapPin, FileCheck, BarChart3, AlertTriangle,
-  FileText, MessageSquare, Upload, Settings, Menu, X, ChevronLeft, LogOut, Compass, Brain
+  FileText, MessageSquare, Upload, Settings, Menu, X, ChevronLeft, LogOut, Compass, Brain, CarFront
 } from "lucide-react";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/gate-queue", label: "Fila / Pátio", icon: Truck },
+  { path: "/fleet", label: "Frota", icon: CarFront },
   { path: "/dock", label: "Docas", icon: Container },
   { path: "/routes", label: "Rotas", icon: MapPin },
   { path: "/conference", label: "Conferência", icon: FileCheck },
