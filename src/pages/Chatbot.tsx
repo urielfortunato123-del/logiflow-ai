@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Loader2 } from "lucide-react";
-import { ChatMessage } from "@/types/domain";
 import { toast } from "sonner";
+import { gatherOperationalContext } from "@/lib/operationalContext";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
@@ -18,6 +18,8 @@ async function streamChat({
   onDone: () => void;
   onError: (error: string) => void;
 }) {
+  const context = gatherOperationalContext();
+
   const resp = await fetch(CHAT_URL, {
     method: "POST",
     headers: {
@@ -26,16 +28,7 @@ async function streamChat({
     },
     body: JSON.stringify({
       messages: messages.map(m => ({ role: m.role, content: m.content })),
-      context: {
-        date: new Date().toISOString().split("T")[0],
-        dashboard_snapshot: {
-          vehicles_in_queue: 2,
-          loading_now: 2,
-          divergences: 1,
-          routes_at_risk: 1,
-          pending_trainings: 2,
-        },
-      },
+      context,
     }),
   });
 
