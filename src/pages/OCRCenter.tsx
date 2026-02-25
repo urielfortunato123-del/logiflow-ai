@@ -1,4 +1,4 @@
-import { Upload, FileText, Image, Eye, Trash2, Sparkles, Loader2, ScanLine, FileSpreadsheet, Presentation } from "lucide-react";
+import { Upload, FileText, Image, Eye, Trash2, Sparkles, Loader2, ScanLine, FileSpreadsheet, Presentation, Download } from "lucide-react";
 import { useState, useRef } from "react";
 import { genId, getStore, setStore, STORE_KEYS } from "@/lib/localStorage";
 import { toast } from "sonner";
@@ -105,6 +105,19 @@ export default function OCRCenter() {
     files.forEach(processFile);
   };
 
+  const exportToMarkdown = (att: Attachment) => {
+    const mdName = att.filename.replace(/\.[^.]+$/, "") + ".md";
+    const header = `# ${att.filename}\n\n> Extraído em ${new Date(att.created_at).toLocaleString("pt-BR")}${att.page_count ? ` • ${att.page_count} páginas` : ""}\n\n---\n\n`;
+    const blob = new Blob([header + att.extracted_text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = mdName;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${mdName} exportado`);
+  };
+
   const deleteAttachment = (id: string) => {
     save(attachments.filter(a => a.id !== id));
     if (preview?.id === id) setPreview(null);
@@ -150,7 +163,12 @@ export default function OCRCenter() {
                 <span className="text-xs text-muted-foreground">{preview.page_count} páginas extraídas</span>
               )}
             </div>
-            <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground hover:text-foreground">Fechar</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => exportToMarkdown(preview)} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Exportar .md">
+                <Download className="h-3.5 w-3.5" /> .md
+              </button>
+              <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground hover:text-foreground">Fechar</button>
+            </div>
           </div>
           <pre className="text-sm text-foreground whitespace-pre-wrap font-mono bg-muted/50 p-4 rounded-lg max-h-60 overflow-y-auto">{preview.extracted_text}</pre>
           <OcrAiAnalysis text={preview.extracted_text} filename={preview.filename} />
@@ -179,6 +197,7 @@ export default function OCRCenter() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button onClick={() => exportToMarkdown(file)} className="p-2 rounded-md hover:bg-accent text-muted-foreground" title="Exportar .md"><Download className="h-4 w-4" /></button>
                   <button onClick={() => setPreview(file)} className="p-2 rounded-md hover:bg-accent text-muted-foreground" title="Visualizar"><Eye className="h-4 w-4" /></button>
                   <button onClick={() => deleteAttachment(file.id)} className="p-2 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Excluir"><Trash2 className="h-4 w-4" /></button>
                 </div>
