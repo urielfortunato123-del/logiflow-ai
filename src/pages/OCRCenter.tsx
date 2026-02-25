@@ -1,7 +1,9 @@
-import { Upload, FileText, Image, Eye, Trash2, Sparkles, Loader2, ScanLine } from "lucide-react";
+import { Upload, FileText, Image, Eye, Trash2, Sparkles, Loader2, ScanLine, FileSpreadsheet, Presentation } from "lucide-react";
 import { useState, useRef } from "react";
 import { genId, getStore, setStore, STORE_KEYS } from "@/lib/localStorage";
 import { toast } from "sonner";
+import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 
 interface Attachment {
   id: string;
@@ -46,8 +48,24 @@ export default function OCRCenter() {
       } else if (file.type.startsWith("image/")) {
         setProgressMsg("Extraindo texto da imagem...");
         extractedText = await ocrImage(file);
+      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name.endsWith(".docx")) {
+        setProgressMsg("Convertendo documento Word...");
+        extractedText = await processDocx(file);
+      } else if (
+        file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.type === "application/vnd.ms-excel" ||
+        file.name.endsWith(".xlsx") || file.name.endsWith(".xls")
+      ) {
+        setProgressMsg("Convertendo planilha Excel...");
+        extractedText = await processExcel(file);
+      } else if (
+        file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+        file.name.endsWith(".pptx")
+      ) {
+        setProgressMsg("Convertendo apresentação PowerPoint...");
+        extractedText = await processPptx(file);
       } else {
-        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado. Envie imagens (JPG, PNG) ou PDFs.`;
+        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado. Envie imagens, PDFs, DOCX, XLSX ou PPTX.`;
       }
 
       const attachment: Attachment = {
@@ -89,7 +107,7 @@ export default function OCRCenter() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <input ref={fileRef} type="file" className="hidden" accept="image/*,.pdf,.csv,.txt" multiple onChange={handleSelect} />
+      <input ref={fileRef} type="file" className="hidden" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.xls,.pptx" multiple onChange={handleSelect} />
 
       <div
         onDragOver={e => { e.preventDefault(); setDragActive(true); }}
@@ -102,7 +120,7 @@ export default function OCRCenter() {
         <p className="text-sm font-medium text-foreground mb-1">
           {processing ? progressMsg || "Processando..." : "Arraste imagens ou PDFs aqui"}
         </p>
-        <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, CSV, TXT</p>
+        <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, DOCX, XLSX, PPTX, CSV, TXT</p>
         <p className="text-xs text-muted-foreground mb-4 flex items-center justify-center gap-1">
           <ScanLine className="h-3 w-3" /> OCR automático para imagens e PDFs (Hugging Face + Gemini Vision)
         </p>
@@ -144,7 +162,7 @@ export default function OCRCenter() {
             {attachments.map(file => (
               <div key={file.id} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
-                  {file.mime.includes("pdf") ? <FileText className="h-5 w-5 text-critical" /> : file.mime.includes("image") ? <Image className="h-5 w-5 text-info" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
+                  {file.mime.includes("pdf") ? <FileText className="h-5 w-5 text-critical" /> : file.mime.includes("image") ? <Image className="h-5 w-5 text-info" /> : file.mime.includes("word") || file.filename.endsWith(".docx") ? <FileText className="h-5 w-5 text-blue-500" /> : file.mime.includes("sheet") || file.mime.includes("excel") || file.filename.endsWith(".xlsx") ? <FileSpreadsheet className="h-5 w-5 text-green-500" /> : file.mime.includes("presentation") || file.filename.endsWith(".pptx") ? <Presentation className="h-5 w-5 text-orange-500" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
                   <div>
                     <p className="text-sm font-medium text-foreground">{file.filename}</p>
                     <p className="text-xs text-muted-foreground">
@@ -229,6 +247,48 @@ async function processPdf(file: File, onProgress: (page: number, total: number) 
   }
 
   return { text: pageTexts.join("\n\n"), pages: totalPages };
+}
+
+/* ── DOCX to text using mammoth ── */
+async function processDocx(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value || "[Nenhum texto extraído do documento]";
+}
+
+/* ── Excel to text using xlsx ── */
+async function processExcel(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  const parts: string[] = [];
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    parts.push(`── ${sheetName} ──\n${csv}`);
+  }
+  return parts.join("\n\n") || "[Planilha vazia]";
+}
+
+/* ── PPTX to text (basic XML extraction) ── */
+async function processPptx(file: File): Promise<string> {
+  try {
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const slideFiles = Object.keys(zip.files)
+      .filter(f => f.match(/ppt\/slides\/slide\d+\.xml$/))
+      .sort();
+
+    const slides: string[] = [];
+    for (const slidePath of slideFiles) {
+      const xml = await zip.files[slidePath].async("text");
+      const texts = xml.match(/<a:t>([^<]*)<\/a:t>/g)?.map(m => m.replace(/<\/?a:t>/g, "")) || [];
+      const slideNum = slidePath.match(/slide(\d+)/)?.[1] || "?";
+      if (texts.length) slides.push(`── Slide ${slideNum} ──\n${texts.join(" ")}`);
+    }
+    return slides.join("\n\n") || "[Nenhum texto encontrado na apresentação]";
+  } catch {
+    return "[Erro ao processar PPTX]";
+  }
 }
 
 /* ── Send single image to OCR edge function ── */
