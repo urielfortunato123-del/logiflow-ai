@@ -64,8 +64,14 @@ export default function OCRCenter() {
       ) {
         setProgressMsg("Convertendo apresentação PowerPoint...");
         extractedText = await processPptx(file);
+      } else if (file.type === "application/msword" || file.name.endsWith(".doc")) {
+        setProgressMsg("Extraindo texto do Word legado...");
+        extractedText = await processLegacyBinary(file, "doc");
+      } else if (file.type === "application/vnd.ms-powerpoint" || file.name.endsWith(".ppt")) {
+        setProgressMsg("Extraindo texto do PowerPoint legado...");
+        extractedText = await processLegacyBinary(file, "ppt");
       } else {
-        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado. Envie imagens, PDFs, DOCX, XLSX ou PPTX.`;
+        extractedText = `[Arquivo: ${file.name}]\nTipo: ${file.type}\nTamanho: ${(file.size / 1024).toFixed(1)} KB\n\nFormato não suportado. Envie imagens, PDFs, DOCX, DOC, XLSX, XLS, PPTX, PPT, CSV ou TXT.`;
       }
 
       const attachment: Attachment = {
@@ -107,7 +113,7 @@ export default function OCRCenter() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <input ref={fileRef} type="file" className="hidden" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.xls,.pptx" multiple onChange={handleSelect} />
+      <input ref={fileRef} type="file" className="hidden" accept="image/*,.pdf,.csv,.txt,.docx,.doc,.xlsx,.xls,.pptx,.ppt" multiple onChange={handleSelect} />
 
       <div
         onDragOver={e => { e.preventDefault(); setDragActive(true); }}
@@ -120,7 +126,7 @@ export default function OCRCenter() {
         <p className="text-sm font-medium text-foreground mb-1">
           {processing ? progressMsg || "Processando..." : "Arraste imagens ou PDFs aqui"}
         </p>
-        <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, DOCX, XLSX, PPTX, CSV, TXT</p>
+        <p className="text-xs text-muted-foreground mb-1">Suporta JPG, PNG, PDF, DOCX, DOC, XLSX, XLS, PPTX, PPT, CSV, TXT</p>
         <p className="text-xs text-muted-foreground mb-4 flex items-center justify-center gap-1">
           <ScanLine className="h-3 w-3" /> OCR automático para imagens e PDFs (Hugging Face + Gemini Vision)
         </p>
@@ -162,7 +168,7 @@ export default function OCRCenter() {
             {attachments.map(file => (
               <div key={file.id} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
-                  {file.mime.includes("pdf") ? <FileText className="h-5 w-5 text-critical" /> : file.mime.includes("image") ? <Image className="h-5 w-5 text-info" /> : file.mime.includes("word") || file.filename.endsWith(".docx") ? <FileText className="h-5 w-5 text-blue-500" /> : file.mime.includes("sheet") || file.mime.includes("excel") || file.filename.endsWith(".xlsx") ? <FileSpreadsheet className="h-5 w-5 text-green-500" /> : file.mime.includes("presentation") || file.filename.endsWith(".pptx") ? <Presentation className="h-5 w-5 text-orange-500" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
+                  {file.mime.includes("pdf") ? <FileText className="h-5 w-5 text-critical" /> : file.mime.includes("image") ? <Image className="h-5 w-5 text-info" /> : file.mime.includes("word") || file.mime === "application/msword" || file.filename.endsWith(".docx") || file.filename.endsWith(".doc") ? <FileText className="h-5 w-5 text-blue-500" /> : file.mime.includes("sheet") || file.mime.includes("excel") || file.filename.endsWith(".xlsx") || file.filename.endsWith(".xls") ? <FileSpreadsheet className="h-5 w-5 text-green-500" /> : file.mime.includes("presentation") || file.mime === "application/vnd.ms-powerpoint" || file.filename.endsWith(".pptx") || file.filename.endsWith(".ppt") ? <Presentation className="h-5 w-5 text-orange-500" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
                   <div>
                     <p className="text-sm font-medium text-foreground">{file.filename}</p>
                     <p className="text-xs text-muted-foreground">
@@ -289,6 +295,51 @@ async function processPptx(file: File): Promise<string> {
   } catch {
     return "[Erro ao processar PPTX]";
   }
+}
+
+/* ── Legacy .doc / .ppt binary text extraction ── */
+async function processLegacyBinary(file: File, type: "doc" | "ppt"): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  // Extract readable text runs from the OLE2 binary
+  // This scans for sequences of printable characters (basic but effective)
+  const textChunks: string[] = [];
+  let current = "";
+  const minLen = 4; // minimum chars to consider a valid text run
+
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    // Check for printable ASCII or common Latin-1 chars
+    if ((b >= 0x20 && b <= 0x7E) || (b >= 0xC0 && b <= 0xFF) || b === 0x0A || b === 0x0D || b === 0x09) {
+      current += String.fromCharCode(b);
+    } else if (b === 0x00 && i + 1 < bytes.length && bytes[i + 1] >= 0x20 && bytes[i + 1] <= 0x7E) {
+      // Skip null bytes in UTF-16LE encoded text (common in .doc/.ppt)
+      continue;
+    } else {
+      if (current.trim().length >= minLen) {
+        textChunks.push(current.trim());
+      }
+      current = "";
+    }
+  }
+  if (current.trim().length >= minLen) {
+    textChunks.push(current.trim());
+  }
+
+  if (!textChunks.length) {
+    return `[Nenhum texto extraído do arquivo ${type.toUpperCase()} legado]`;
+  }
+
+  // Filter out binary noise: remove chunks that are mostly non-alphanumeric
+  const cleaned = textChunks.filter(chunk => {
+    const alphaCount = (chunk.match(/[a-zA-ZÀ-ÿ0-9\s]/g) || []).length;
+    return alphaCount / chunk.length > 0.6;
+  });
+
+  const label = type === "doc" ? "Word" : "PowerPoint";
+  const header = `📄 Texto extraído (${label} legado):\n⚠️ Formato binário antigo — a extração pode conter artefatos.\n\n`;
+  return header + (cleaned.join("\n") || "[Nenhum texto legível encontrado]");
 }
 
 /* ── Send single image to OCR edge function ── */
